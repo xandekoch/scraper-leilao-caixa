@@ -6,7 +6,9 @@ export async function runSearch(client: HttpClient, payload: CaixaSearchPayload)
   // Estabelece sessão/cookies antes do POST (muito comum em ASP clássico)
   await client.get("/sistema/busca-imovel.asp?sltTipoBusca=imoveis");
 
-  const res = await client.postForm("/sistema/carregaPesquisaImoveis.asp", payload);
+  const res = await client.postForm("/sistema/carregaPesquisaImoveis.asp", payload, {
+    headers: { "x-requested-with": "XMLHttpRequest" }
+  });
   if (res.status !== 200) {
     throw new Error(`Search failed: HTTP ${res.status}`);
   }

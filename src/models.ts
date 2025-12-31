@@ -22,7 +22,7 @@ export type CaixaSearchResult = Readonly<{
   hdnFiltro?: string;
 }>;
 
-export type ImovelListItem = Readonly<{
+type ImovelBaseListItem = Readonly<{
   imovelId: string;
   uf: Uf;
   cidadeId: string;
@@ -41,6 +41,31 @@ export type ImovelListItem = Readonly<{
   observacoesRaw?: string;
   page: number;
 }>;
+
+type ImovelDetailListItem = Readonly<{
+  matriculaPdfUrl?: string;
+  galeriaFotoFilenames?: string; // filenames separados por "|"
+  galeriaFotoUrls?: string; // urls separados por "|"
+  detalheTipoImovel?: string;
+  detalheQuartos?: number;
+  detalheGaragem?: number;
+  detalheNumeroImovel?: string;
+  detalheMatriculas?: string; // separados por "|"
+  detalheComarca?: string;
+  detalheOficio?: string;
+  detalheInscricaoImobiliaria?: string;
+  detalheAverbacaoLeiloesNegativos?: string;
+  detalheAreaTotalM2?: number;
+  detalheAreaPrivativaM2?: number;
+  detalheEndereco?: string;
+  detalheDescricao?: string;
+  detalheFormasPagamentoRaw?: string;
+  detalheAceitaRecursosProprios?: boolean;
+  detalheAceitaFGTS?: boolean;
+  detalheAceitaFinanciamento?: boolean;
+}>;
+
+export type ImovelListItem = ImovelBaseListItem & ImovelDetailListItem;
 
 export function parseBrazilianNumber(raw: string): number | undefined {
   const trimmed = raw.trim();

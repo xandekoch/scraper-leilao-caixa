@@ -65,13 +65,17 @@ export class HttpClient {
     return await this.request(path, { method: "GET" });
   }
 
-  async postForm(path: string, form: Record<string, string>): Promise<HttpResponse> {
+  async postForm(
+    path: string,
+    form: Record<string, string>,
+    opts?: Readonly<{ headers?: Record<string, string> }>
+  ): Promise<HttpResponse> {
     const body = new URLSearchParams(form);
     return await this.request(path, {
       method: "POST",
       headers: {
         "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "x-requested-with": "XMLHttpRequest"
+        ...(opts?.headers ?? {})
       },
       body
     });

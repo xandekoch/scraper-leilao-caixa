@@ -5,7 +5,9 @@ import type { CaixaSearchPayload, ImovelListItem } from "./models";
 import { HttpClient } from "./caixa/httpClient";
 import { runSearch } from "./caixa/search";
 import { fetchListPageHtml } from "./caixa/listPage";
+import { fetchDetailPageHtml } from "./caixa/detail";
 import { parseListPageHtml } from "./parsers/parseListPage";
+import { parseDetailPageHtml } from "./parsers/parseDetailPage";
 import { writeImoveisCsv } from "./fs-api/writeCsv";
 
 const DEFAULT_UA =
@@ -26,7 +28,9 @@ const CliSchema = z.object({
   minDelayMs: z.coerce.number().int().min(0).max(10_000).default(500),
   timeoutMs: z.coerce.number().int().min(1_000).max(120_000).default(20_000),
   retries: z.coerce.number().int().min(0).max(8).default(4),
-  maxPages: z.coerce.number().int().min(1).optional()
+  maxPages: z.coerce.number().int().min(1).optional(),
+  withDetails: z.coerce.boolean().default(false),
+  detailsConcurrency: z.coerce.number().int().min(1).max(10).default(2)
 });
 
 async function main(): Promise<void> {
@@ -49,7 +53,9 @@ async function main(): Promise<void> {
     .option("--minDelayMs <ms>", "Delay mínimo entre requests (ms)", "500")
     .option("--timeoutMs <ms>", "Timeout por request (ms)", "20000")
     .option("--retries <n>", "Retries para 429/5xx (0-8)", "4")
-    .option("--maxPages <n>", "Limitar páginas (útil para teste)");
+    .option("--maxPages <n>", "Limitar páginas (útil para teste)")
+    .option("--withDetails", "Buscar detalhes por imóvel (galeria de fotos + matrícula PDF)", false)
+    .option("--detailsConcurrency <n>", "Concorrência para detalhes (1-10)", "2");
 
   program.parse(process.argv);
   const raw = program.opts();
@@ -69,7 +75,9 @@ async function main(): Promise<void> {
     minDelayMs: raw.minDelayMs,
     timeoutMs: raw.timeoutMs,
     retries: raw.retries,
-    maxPages: raw.maxPages
+    maxPages: raw.maxPages,
+    withDetails: raw.withDetails,
+    detailsConcurrency: raw.detailsConcurrency
   });
 
   const baseUrl = "https://venda-imoveis.caixa.gov.br";
@@ -133,7 +141,65 @@ async function main(): Promise<void> {
     return a.imovelId.localeCompare(b.imovelId);
   });
 
-  await writeImoveisCsv(cfg.out, results);
+  let finalItems: ImovelListItem[] = results;
+
+  if (cfg.withDetails) {
+    console.log(`[details] fetching details for ${results.length} rows (unique cache enabled)...`);
+    const limitDetails = pLimit(cfg.detailsConcurrency);
+    const cache = new Map<string, Promise<ReturnType<typeof parseDetailPageHtml>>>();
+
+    const getDetail = (imovelId: string) => {
+      const existing = cache.get(imovelId);
+      if (existing) return existing;
+      const p = limitDetails(async () => {
+        try {
+          const html = await fetchDetailPageHtml(client, imovelId);
+          return parseDetailPageHtml(html);
+        } catch (err) {
+          console.warn(`[details] failed imovelId=${imovelId}: ${String(err)}`);
+          return {};
+        }
+      });
+      cache.set(imovelId, p);
+      return p;
+    };
+
+    finalItems = await Promise.all(
+      results.map(async (item) => {
+        const d = await getDetail(item.imovelId);
+        const galeriaFotoFilenames = d.galeriaFotoFilenames?.length ? d.galeriaFotoFilenames.join("|") : undefined;
+        const galeriaFotoUrls = d.galeriaFotoUrls?.length ? d.galeriaFotoUrls.join("|") : undefined;
+        const detalheMatriculas = d.matriculas?.length ? d.matriculas.join("|") : undefined;
+
+        return {
+          ...item,
+          ...(d.matriculaPdfUrl ? { matriculaPdfUrl: d.matriculaPdfUrl } : {}),
+          ...(galeriaFotoFilenames ? { galeriaFotoFilenames } : {}),
+          ...(galeriaFotoUrls ? { galeriaFotoUrls } : {})
+          ,
+          ...(d.tipoImovel ? { detalheTipoImovel: d.tipoImovel } : {}),
+          ...(d.quartos !== undefined ? { detalheQuartos: d.quartos } : {}),
+          ...(d.garagem !== undefined ? { detalheGaragem: d.garagem } : {}),
+          ...(d.numeroImovel ? { detalheNumeroImovel: d.numeroImovel } : {}),
+          ...(detalheMatriculas ? { detalheMatriculas } : {}),
+          ...(d.comarca ? { detalheComarca: d.comarca } : {}),
+          ...(d.oficio ? { detalheOficio: d.oficio } : {}),
+          ...(d.inscricaoImobiliaria ? { detalheInscricaoImobiliaria: d.inscricaoImobiliaria } : {}),
+          ...(d.averbacaoLeiloesNegativos ? { detalheAverbacaoLeiloesNegativos: d.averbacaoLeiloesNegativos } : {}),
+          ...(d.areaTotalM2 !== undefined ? { detalheAreaTotalM2: d.areaTotalM2 } : {}),
+          ...(d.areaPrivativaM2 !== undefined ? { detalheAreaPrivativaM2: d.areaPrivativaM2 } : {}),
+          ...(d.endereco ? { detalheEndereco: d.endereco } : {}),
+          ...(d.descricao ? { detalheDescricao: d.descricao } : {}),
+          ...(d.formasPagamentoRaw ? { detalheFormasPagamentoRaw: d.formasPagamentoRaw } : {}),
+          ...(d.aceitaRecursosProprios !== undefined ? { detalheAceitaRecursosProprios: d.aceitaRecursosProprios } : {}),
+          ...(d.aceitaFGTS !== undefined ? { detalheAceitaFGTS: d.aceitaFGTS } : {}),
+          ...(d.aceitaFinanciamento !== undefined ? { detalheAceitaFinanciamento: d.aceitaFinanciamento } : {})
+        };
+      })
+    );
+  }
+
+  await writeImoveisCsv(cfg.out, finalItems);
   console.log(`[done] wrote=${cfg.out} rows=${results.length}`);
 }
 

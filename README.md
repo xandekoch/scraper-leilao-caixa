@@ -41,6 +41,7 @@ npm run scrape -- \
 - `--concurrency 3`: quantas páginas baixar em paralelo (1–10)
 - `--minDelayMs 500`: delay mínimo entre requests (evitar rate limiting)
 - `--maxPages 3`: limitar páginas (bom para testes rápidos)
+- `--withDetails`: fetch na page de detalhes de cada imóvel (enriquece os dados, mas demora mais)
 
 ## Como obter IDs (cidade, filtros)
 
