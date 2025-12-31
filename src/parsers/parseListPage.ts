@@ -22,6 +22,16 @@ export function parseListPageHtml(args: Readonly<{
   $("li.group-block-item").each((_idx, el) => {
     const card = $(el);
 
+    const fotoSrc = card.find("img.fotoimovel").first().attr("src")?.trim();
+    const fotoFilename = (() => {
+      if (!fotoSrc) return undefined;
+      const noQuery = fotoSrc.split("?")[0] ?? fotoSrc;
+      const parts = noQuery.split("/").filter(Boolean);
+      const last = parts[parts.length - 1];
+      return last && last.length > 0 ? last : undefined;
+    })();
+    const fotoUrl = fotoFilename ? `https://venda-imoveis.caixa.gov.br/fotos/${fotoFilename}` : undefined;
+
     const onclick =
       card.find("[onclick*='detalhe_imovel']").first().attr("onclick") ??
       card.find("img[onclick*='detalhe_imovel']").first().attr("onclick") ??
@@ -110,6 +120,8 @@ export function parseListPageHtml(args: Readonly<{
       cidadeId,
       titulo,
       page,
+      ...(fotoFilename ? { fotoFilename } : {}),
+      ...(fotoUrl ? { fotoUrl } : {}),
       ...(modalidadeFinal ? { modalidade: modalidadeFinal } : {}),
       ...(tipoImovel ? { tipoImovel } : {}),
       ...(areaUtilM2 !== undefined ? { areaUtilM2 } : {}),

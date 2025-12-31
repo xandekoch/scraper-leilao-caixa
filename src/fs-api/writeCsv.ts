@@ -7,6 +7,8 @@ const COLUMNS: ReadonlyArray<keyof ImovelListItem> = [
   "uf",
   "cidadeId",
   "titulo",
+  "fotoFilename",
+  "fotoUrl",
   "modalidade",
   "tipoImovel",
   "areaUtilM2",

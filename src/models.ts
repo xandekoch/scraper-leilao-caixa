@@ -27,6 +27,8 @@ export type ImovelListItem = Readonly<{
   uf: Uf;
   cidadeId: string;
   titulo: string;
+  fotoFilename?: string;
+  fotoUrl?: string;
   modalidade?: string;
   tipoImovel?: string;
   areaUtilM2?: number;
