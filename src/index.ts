@@ -1,17 +1,6 @@
 import { Command } from "commander";
-import pLimit from "p-limit";
 import { z } from "zod";
-import type { CaixaSearchPayload, ImovelListItem } from "./models";
-import { HttpClient } from "./caixa/httpClient";
-import { runSearch } from "./caixa/search";
-import { fetchListPageHtml } from "./caixa/listPage";
-import { fetchDetailPageHtml } from "./caixa/detail";
-import { parseListPageHtml } from "./parsers/parseListPage";
-import { parseDetailPageHtml } from "./parsers/parseDetailPage";
-import { writeImoveisCsv } from "./fs-api/writeCsv";
-
-const DEFAULT_UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36";
+import { scrapeCaixa } from "./scrape";
 
 const CliSchema = z.object({
   uf: z.string().min(2),
@@ -23,7 +12,7 @@ const CliSchema = z.object({
   faixaVlr: z.string().optional().default("Selecione"),
   quartos: z.string().optional().default("Selecione"),
   vagas: z.string().optional().default("Selecione"),
-  out: z.string().min(1).default("output.csv"),
+  out: z.string().min(1).default("output/output.csv"),
   concurrency: z.coerce.number().int().min(1).max(10).default(3),
   minDelayMs: z.coerce.number().int().min(0).max(10_000).default(500),
   timeoutMs: z.coerce.number().int().min(1_000).max(120_000).default(20_000),
@@ -48,7 +37,7 @@ async function main(): Promise<void> {
     .option("--faixaVlr <v>", 'hdn_faixa_vlr (default: "Selecione")', "Selecione")
     .option("--quartos <v>", 'hdn_quartos (default: "Selecione")', "Selecione")
     .option("--vagas <v>", 'hdn_vg_garagem (default: "Selecione")', "Selecione")
-    .option("--out <path>", "Arquivo CSV de saída", "output.csv")
+    .option("--out <path>", "Arquivo CSV de saída", "output/output.csv")
     .option("--concurrency <n>", "Concorrência (1-10)", "3")
     .option("--minDelayMs <ms>", "Delay mínimo entre requests (ms)", "500")
     .option("--timeoutMs <ms>", "Timeout por request (ms)", "20000")
@@ -80,127 +69,28 @@ async function main(): Promise<void> {
     detailsConcurrency: raw.detailsConcurrency
   });
 
-  const baseUrl = "https://venda-imoveis.caixa.gov.br";
-  const referer = "https://venda-imoveis.caixa.gov.br/sistema/busca-imovel.asp?sltTipoBusca=imoveis";
-
-  const client = new HttpClient({
-    baseUrl,
-    origin: baseUrl,
-    referer,
-    userAgent: DEFAULT_UA,
-    timeoutMs: cfg.timeoutMs,
-    retries: cfg.retries,
-    minDelayMs: cfg.minDelayMs
-  });
-
-  const payload: CaixaSearchPayload = {
-    hdn_estado: cfg.uf,
-    hdn_cidade: cfg.cidade,
-    hdn_bairro: cfg.bairro ?? "",
-    hdn_tp_venda: cfg.tpVenda,
-    hdn_tp_imovel: cfg.tpImovel,
-    hdn_area_util: cfg.areaUtil,
-    hdn_faixa_vlr: cfg.faixaVlr,
-    hdn_quartos: cfg.quartos,
-    hdn_vg_garagem: cfg.vagas,
-    strValorSimulador: "",
-    strAceitaFGTS: "",
-    strAceitaFinanciamento: ""
-  };
-
-  console.log(`[search] uf=${cfg.uf} cidade=${cfg.cidade} ...`);
-  const search = await runSearch(client, payload);
-  const totalPages = cfg.maxPages ? Math.min(cfg.maxPages, search.hdnImovByPage.length) : search.hdnImovByPage.length;
-  console.log(`[search] qtdRegistros=${search.qtdRegistros} qtdPag=${search.qtdPag} pagesFound=${search.hdnImovByPage.length} scrapingPages=${totalPages}`);
-
-  const limit = pLimit(cfg.concurrency);
-  const results: ImovelListItem[] = [];
-
-  const tasks: Array<Promise<ImovelListItem[]>> = [];
-  for (let idx = 0; idx < totalPages; idx++) {
-    const page = idx + 1;
-    const hdnImov = search.hdnImovByPage[idx];
-    if (!hdnImov) continue;
-    tasks.push(
-      limit(async () => {
-        const html = await fetchListPageHtml(client, hdnImov);
-        const items = parseListPageHtml({ html, uf: cfg.uf, cidadeId: cfg.cidade, page });
-        console.log(`[page ${page}/${totalPages}] items=${items.length}`);
-        return items;
-      })
-    );
-  }
-
-  const pages = await Promise.all(tasks);
-  for (const p of pages) results.push(...p);
-
-  // ordenação estável/determinística
-  results.sort((a, b) => {
-    const pa = a.page - b.page;
-    if (pa !== 0) return pa;
-    return a.imovelId.localeCompare(b.imovelId);
-  });
-
-  let finalItems: ImovelListItem[] = results;
-
-  if (cfg.withDetails) {
-    console.log(`[details] fetching details for ${results.length} rows (unique cache enabled)...`);
-    const limitDetails = pLimit(cfg.detailsConcurrency);
-    const cache = new Map<string, Promise<ReturnType<typeof parseDetailPageHtml>>>();
-
-    const getDetail = (imovelId: string) => {
-      const existing = cache.get(imovelId);
-      if (existing) return existing;
-      const p = limitDetails(async () => {
-        try {
-          const html = await fetchDetailPageHtml(client, imovelId);
-          return parseDetailPageHtml(html);
-        } catch (err) {
-          console.warn(`[details] failed imovelId=${imovelId}: ${String(err)}`);
-          return {};
-        }
-      });
-      cache.set(imovelId, p);
-      return p;
-    };
-
-    finalItems = await Promise.all(
-      results.map(async (item) => {
-        const d = await getDetail(item.imovelId);
-        const galeriaFotoFilenames = d.galeriaFotoFilenames?.length ? d.galeriaFotoFilenames.join("|") : undefined;
-        const galeriaFotoUrls = d.galeriaFotoUrls?.length ? d.galeriaFotoUrls.join("|") : undefined;
-        const detalheMatriculas = d.matriculas?.length ? d.matriculas.join("|") : undefined;
-
-        return {
-          ...item,
-          ...(d.matriculaPdfUrl ? { matriculaPdfUrl: d.matriculaPdfUrl } : {}),
-          ...(galeriaFotoFilenames ? { galeriaFotoFilenames } : {}),
-          ...(galeriaFotoUrls ? { galeriaFotoUrls } : {})
-          ,
-          ...(d.tipoImovel ? { detalheTipoImovel: d.tipoImovel } : {}),
-          ...(d.quartos !== undefined ? { detalheQuartos: d.quartos } : {}),
-          ...(d.garagem !== undefined ? { detalheGaragem: d.garagem } : {}),
-          ...(d.numeroImovel ? { detalheNumeroImovel: d.numeroImovel } : {}),
-          ...(detalheMatriculas ? { detalheMatriculas } : {}),
-          ...(d.comarca ? { detalheComarca: d.comarca } : {}),
-          ...(d.oficio ? { detalheOficio: d.oficio } : {}),
-          ...(d.inscricaoImobiliaria ? { detalheInscricaoImobiliaria: d.inscricaoImobiliaria } : {}),
-          ...(d.averbacaoLeiloesNegativos ? { detalheAverbacaoLeiloesNegativos: d.averbacaoLeiloesNegativos } : {}),
-          ...(d.areaTotalM2 !== undefined ? { detalheAreaTotalM2: d.areaTotalM2 } : {}),
-          ...(d.areaPrivativaM2 !== undefined ? { detalheAreaPrivativaM2: d.areaPrivativaM2 } : {}),
-          ...(d.endereco ? { detalheEndereco: d.endereco } : {}),
-          ...(d.descricao ? { detalheDescricao: d.descricao } : {}),
-          ...(d.formasPagamentoRaw ? { detalheFormasPagamentoRaw: d.formasPagamentoRaw } : {}),
-          ...(d.aceitaRecursosProprios !== undefined ? { detalheAceitaRecursosProprios: d.aceitaRecursosProprios } : {}),
-          ...(d.aceitaFGTS !== undefined ? { detalheAceitaFGTS: d.aceitaFGTS } : {}),
-          ...(d.aceitaFinanciamento !== undefined ? { detalheAceitaFinanciamento: d.aceitaFinanciamento } : {})
-        };
-      })
-    );
-  }
-
-  await writeImoveisCsv(cfg.out, finalItems);
-  console.log(`[done] wrote=${cfg.out} rows=${results.length}`);
+  await scrapeCaixa(
+    {
+      uf: cfg.uf,
+      cidade: cfg.cidade,
+      bairro: cfg.bairro,
+      tpVenda: cfg.tpVenda,
+      tpImovel: cfg.tpImovel,
+      areaUtil: cfg.areaUtil,
+      faixaVlr: cfg.faixaVlr,
+      quartos: cfg.quartos,
+      vagas: cfg.vagas,
+      out: cfg.out,
+      concurrency: cfg.concurrency,
+      minDelayMs: cfg.minDelayMs,
+      timeoutMs: cfg.timeoutMs,
+      retries: cfg.retries,
+      withDetails: cfg.withDetails,
+      detailsConcurrency: cfg.detailsConcurrency,
+      ...(cfg.maxPages !== undefined ? { maxPages: cfg.maxPages } : {})
+    },
+    (line) => console.log(line)
+  );
 }
 
 main().catch((err) => {

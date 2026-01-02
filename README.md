@@ -1,26 +1,58 @@
-# Scraper - Leilão/Venda Imóveis Caixa (HTTP puro)
+# Scraper Caixa (Venda Imóveis) — CLI + Web UI
 
-Scraper em **Node.js + TypeScript** que reproduz o fluxo real do site:
+Scraper em **Node.js + TypeScript** que coleta a listagem de imóveis do site da Caixa e salva em **CSV** dentro de `output/`.
 
-- `POST /sistema/carregaPesquisaImoveis.asp` → retorna `hdnImov1..N` e `hdnQtdPag`
-- `POST /sistema/carregaListaImoveis.asp` (para cada página) → retorna HTML com os cards
+Ele reproduz o fluxo real do site:
 
-O scraper parseia os cards e exporta **CSV**.
+- `POST /sistema/carregaPesquisaImoveis.asp` → retorna `hdnImov1..N` + paginação
+- `POST /sistema/carregaListaImoveis.asp` (por página) → retorna HTML com os cards
+- (opcional) `POST /sistema/detalhe-imovel.asp` (por imóvel) → matrícula PDF + galeria + campos extras
+
+---
 
 ## Requisitos
 
-- Node.js 18+ (recomendado 20+)
+- Node.js **18+** (recomendado 20+)
 
-## Instalação
+## Setup
 
 ```bash
 cd /Users/xandekoch/Documents/coding/study/scrape-leilao-caixa
 npm install
 ```
 
-## Rodar (exemplo RJ / Itaboraí = 7084)
+---
 
-Exemplo alinhado com seu `curl`:
+## 1) Gerar JSON de estados/cidades (1x)
+
+A UI (e você) usa `output/estados-cidades.json`.
+
+```bash
+node scripts/fetch-estados-cidades.js
+```
+
+Saída: `output/estados-cidades.json`
+
+> Observação: esse endpoint devolve “cidades com imóveis disponíveis” (não é um cadastro oficial de todas as cidades).
+
+---
+
+## 2) Rodar via Web UI (recomendado)
+
+```bash
+npm run server
+```
+
+Abra `http://localhost:5177`
+
+- Aba **Scrape**: escolhe UF/cidade + filtros + `withDetails` e roda o job.
+- Aba **Outputs**: lista os CSVs de `output/` e renderiza tabela (prévia das primeiras linhas).
+
+---
+
+## 3) Rodar via CLI
+
+Exemplo (RJ / Itaboraí = `7084`) salvando em `output/`:
 
 ```bash
 npm run scrape -- \
@@ -36,19 +68,22 @@ npm run scrape -- \
   --out output/output.csv
 ```
 
-### Opções úteis
+### Flags úteis (CLI)
 
-- `--concurrency 3`: quantas páginas baixar em paralelo (1–10)
-- `--minDelayMs 500`: delay mínimo entre requests (evitar rate limiting)
-- `--maxPages 3`: limitar páginas (bom para testes rápidos)
-- `--withDetails`: fetch na page de detalhes de cada imóvel (enriquece os dados, mas demora mais)
+- `--withDetails`: busca a página de detalhe por imóvel e adiciona colunas extras (muito mais lento).
+- `--concurrency 3`: páginas em paralelo (1–10).
+- `--detailsConcurrency 2`: páginas de detalhes do imóvel em paralelo (1–10).
+- `--minDelayMs 500`: delay mínimo entre requests (evita rate limiting).
+- `--maxPages 3`: limita páginas (bom para testar rápido).
+- `--timeoutMs 20000`, `--retries 4`: robustez em rede.
 
-## Como obter IDs (cidade, filtros)
+---
 
-No site, o `<option value='7084'>ITABORAI</option>` indica o `--cidade 7084`.
-Os demais filtros mapeiam direto para os campos do POST:
-`hdn_tp_venda`, `hdn_tp_imovel`, `hdn_area_util`, `hdn_faixa_vlr`, `hdn_quartos`, `hdn_vg_garagem`.
+## Outputs
 
-### To-Do:
+- Todos os CSVs devem ir para: `output/`
+- O server também lista/visualiza automaticamente esses arquivos.
 
-- Criar um indíce com os filtros e seus possíveis values, e montar um html simples pra facilitar o scrapping.
+## To-Do
+
+- Melhorar a UI/UX da webpage (table, visualizacao de fotos dos imóveis).

@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Caixa Scraper UI</title>
+    <style>
+      :root {
+        --bg: #0b1220;
+        --panel: #121b2e;
+        --muted: #93a4c7;
+        --text: #e9eefc;
+        --accent: #4da3ff;
+        --border: #23304d;
+        --danger: #ff6b6b;
+      }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(18, 27, 46, 0.7);
+        position: sticky;
+        top: 0;
+        backdrop-filter: blur(8px);
+      }
+      header h1 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 700;
+      }
+      header p {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      main {
+        padding: 18px 20px 40px;
+        max-width: 1100px;
+        margin: 0 auto;
+      }
+      .tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 14px;
+      }
+      .tab {
+        border: 1px solid var(--border);
+        background: var(--panel);
+        padding: 10px 12px;
+        border-radius: 10px;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 13px;
+      }
+      .tab.active {
+        color: var(--text);
+        border-color: rgba(77, 163, 255, 0.5);
+        box-shadow: 0 0 0 3px rgba(77, 163, 255, 0.12);
+      }
+      .panel {
+        border: 1px solid var(--border);
+        background: var(--panel);
+        border-radius: 14px;
+        padding: 14px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+      }
+      @media (max-width: 900px) {
+        .grid { grid-template-columns: 1fr; }
+      }
+      label {
+        font-size: 12px;
+        color: var(--muted);
+        display: block;
+        margin-bottom: 6px;
+      }
+      select, input[type="text"], input[type="number"] {
+        width: 100%;
+        padding: 10px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: #0d1629;
+        color: var(--text);
+        outline: none;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .btn {
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(77, 163, 255, 0.55);
+        background: rgba(77, 163, 255, 0.12);
+        color: var(--text);
+        cursor: pointer;
+        font-weight: 700;
+      }
+      .btn.secondary {
+        border-color: var(--border);
+        background: transparent;
+        color: var(--muted);
+      }
+      .btn.danger {
+        border-color: rgba(255, 107, 107, 0.6);
+        background: rgba(255, 107, 107, 0.1);
+      }
+      .hint {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 6px;
+      }
+      .error {
+        color: var(--danger);
+        font-size: 12px;
+        margin-top: 8px;
+        white-space: pre-wrap;
+      }
+      pre {
+        margin: 10px 0 0;
+        padding: 12px;
+        border-radius: 12px;
+        background: #0d1629;
+        border: 1px solid var(--border);
+        color: #cfe0ff;
+        max-height: 280px;
+        overflow: auto;
+        font-size: 12px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+      }
+      th, td {
+        border-bottom: 1px solid var(--border);
+        padding: 8px 10px;
+        text-align: left;
+        vertical-align: top;
+        font-size: 12px;
+      }
+      th {
+        color: var(--muted);
+        font-weight: 700;
+      }
+      .truncate {
+        max-width: 360px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Caixa Scraper UI</h1>
+      <p>Interface local para escolher filtros e gerar CSV em <code>output/</code>.</p>
+    </header>
+    <main>
+      <div class="tabs">
+        <button class="tab active" data-tab="scrape">Scrape</button>
+        <button class="tab" data-tab="outputs">Outputs</button>
+      </div>
+
+      <section class="panel" id="tab-scrape">
+        <div class="grid">
+          <div>
+            <label>UF</label>
+            <select id="uf"></select>
+          </div>
+          <div>
+            <label>Cidade</label>
+            <select id="cidade"></select>
+          </div>
+          <div>
+            <label>Modalidade</label>
+            <select id="modalidade">
+              <option value="Selecione">Selecione</option>
+              <option value="14">Leilão SFI - Edital Único</option>
+              <option value="30">Exercício de Direito de Preferência</option>
+              <option value="21">Licitação Aberta</option>
+              <option value="33">Venda Online</option>
+              <option value="34">Venda Direta Online</option>
+            </select>
+            <div class="hint">Mapeia para <code>hdn_tp_venda</code> no scraper.</div>
+          </div>
+
+          <div>
+            <label>Tipo do imóvel</label>
+            <select id="tpImovel">
+              <option value="Selecione">Selecione</option>
+              <option value="1">Casa</option>
+              <option value="2">Apartamento</option>
+              <option value="3">Outros</option>
+              <option value="4">Indiferente</option>
+            </select>
+          </div>
+          <div>
+            <label>Quartos</label>
+            <select id="quartos">
+              <option value="Selecione">Selecione</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3 ou mais</option>
+              <option value="0">Indiferente</option>
+            </select>
+          </div>
+          <div>
+            <label>Vagas na garagem</label>
+            <select id="vagas">
+              <option value="Selecione">Selecione</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3 ou mais</option>
+              <option value="0">Indiferente</option>
+            </select>
+          </div>
+
+          <div>
+            <label>Área útil</label>
+            <select id="areaUtil">
+              <option value="Selecione">Selecione</option>
+              <option value="1">Até 60m²</option>
+              <option value="2">De 61 a 90m²</option>
+              <option value="3">De 91 a 120m²</option>
+              <option value="4">De 121 a 200m²</option>
+              <option value="5">De 201 a 300m²</option>
+              <option value="6">Acima de 301m²</option>
+              <option value="0">Indiferente</option>
+            </select>
+          </div>
+          <div>
+            <label>Faixa de valor</label>
+            <select id="faixaVlr">
+              <option value="Selecione">Selecione</option>
+              <option value="1">Até R$100.000,00</option>
+              <option value="2">De R$100.000,01 até R$200.000,00</option>
+              <option value="3">De R$200.000,01 até R$400.000,00</option>
+              <option value="4">De R$400.000,01 até R$750.000,00</option>
+              <option value="5">Acima de R$750.000,00</option>
+              <option value="0">Indiferente</option>
+            </select>
+          </div>
+          <div>
+            <label>Arquivo (base) em output/</label>
+            <input id="outFileBase" type="text" placeholder="ex: rj-itaborai-apto" />
+            <div class="hint">O server sempre salva em <code>output/&lt;base&gt;.csv</code>.</div>
+          </div>
+        </div>
+
+        <div style="margin-top: 12px" class="row">
+          <label style="margin: 0; display: flex; gap: 8px; align-items: center">
+            <input id="withDetails" type="checkbox" />
+            Buscar detalhes (galeria + matrícula + campos extras)
+          </label>
+          <div style="flex: 1"></div>
+          <button class="btn" id="run">Rodar scrape</button>
+          <button class="btn secondary" id="refreshCities">Recarregar estados/cidades</button>
+        </div>
+
+        <div class="grid" style="margin-top: 12px">
+          <div>
+            <label>maxPages (opcional)</label>
+            <input id="maxPages" type="number" min="1" placeholder="ex: 2" />
+          </div>
+          <div>
+            <label>concurrency</label>
+            <input id="concurrency" type="number" min="1" max="10" value="3" />
+          </div>
+          <div>
+            <label>detailsConcurrency</label>
+            <input id="detailsConcurrency" type="number" min="1" max="10" value="2" />
+          </div>
+          <div>
+            <label>minDelayMs</label>
+            <input id="minDelayMs" type="number" min="0" max="10000" value="500" />
+          </div>
+          <div>
+            <label>timeoutMs</label>
+            <input id="timeoutMs" type="number" min="1000" max="120000" value="20000" />
+          </div>
+          <div>
+            <label>retries</label>
+            <input id="retries" type="number" min="0" max="8" value="4" />
+          </div>
+        </div>
+
+        <div id="scrapeError" class="error"></div>
+        <pre id="logs" style="display:none"></pre>
+        <div id="result" class="hint"></div>
+      </section>
+
+      <section class="panel" id="tab-outputs" style="display:none">
+        <div class="row">
+          <button class="btn" id="reloadOutputs">Recarregar</button>
+          <div class="hint">Clique em um CSV para visualizar (primeiras 200 linhas).</div>
+        </div>
+        <div id="outputsList" style="margin-top: 10px"></div>
+        <div id="tableWrap"></div>
+      </section>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const tabButtons = document.querySelectorAll(".tab");
+      tabButtons.forEach((b) =>
+        b.addEventListener("click", () => {
+          tabButtons.forEach((x) => x.classList.remove("active"));
+          b.classList.add("active");
+          const t = b.dataset.tab;
+          $("tab-scrape").style.display = t === "scrape" ? "block" : "none";
+          $("tab-outputs").style.display = t === "outputs" ? "block" : "none";
+          if (t === "outputs") loadOutputs();
+        })
+      );
+
+      let estadosCidades = null;
+      async function loadEstadosCidades() {
+        $("scrapeError").textContent = "";
+        const res = await fetch("/api/estados-cidades");
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Falha ao carregar estados/cidades");
+        estadosCidades = data.estados;
+        const ufs = Object.keys(estadosCidades).sort();
+        $("uf").innerHTML = ufs.map((uf) => `<option value="${uf}">${uf}</option>`).join("");
+        $("uf").value = "RJ";
+        updateCidades();
+      }
+
+      function updateCidades() {
+        const uf = $("uf").value;
+        const cidades = (estadosCidades && estadosCidades[uf]) || [];
+        $("cidade").innerHTML = cidades
+          .map((c) => `<option value="${c.id}">${c.nome} (${c.id})</option>`)
+          .join("");
+        // tenta selecionar ITABORAI (7084) se existir
+        const it = cidades.find((c) => c.id === "7084");
+        if (it) $("cidade").value = "7084";
+      }
+
+      $("uf").addEventListener("change", updateCidades);
+      $("refreshCities").addEventListener("click", async () => {
+        try { await loadEstadosCidades(); } catch (e) { $("scrapeError").textContent = String(e); }
+      });
+
+      async function startJob() {
+        $("scrapeError").textContent = "";
+        $("result").textContent = "";
+        $("logs").style.display = "block";
+        $("logs").textContent = "";
+
+        const body = {
+          uf: $("uf").value,
+          cidade: $("cidade").value,
+          modalidade: $("modalidade").value,
+          tpImovel: $("tpImovel").value,
+          quartos: $("quartos").value,
+          vagas: $("vagas").value,
+          areaUtil: $("areaUtil").value,
+          faixaVlr: $("faixaVlr").value,
+          withDetails: $("withDetails").checked,
+          outFileBase: $("outFileBase").value || undefined,
+          maxPages: $("maxPages").value ? Number($("maxPages").value) : undefined,
+          concurrency: Number($("concurrency").value),
+          detailsConcurrency: Number($("detailsConcurrency").value),
+          minDelayMs: Number($("minDelayMs").value),
+          timeoutMs: Number($("timeoutMs").value),
+          retries: Number($("retries").value),
+        };
+
+        const res = await fetch("/api/scrape", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(JSON.stringify(data.error || data, null, 2));
+        const jobId = data.jobId;
+        pollJob(jobId);
+      }
+
+      async function pollJob(jobId) {
+        const timer = setInterval(async () => {
+          const res = await fetch(`/api/jobs/${jobId}`);
+          const job = await res.json();
+          if (!res.ok) {
+            clearInterval(timer);
+            $("scrapeError").textContent = job.error || "Job não encontrado";
+            return;
+          }
+          $("logs").textContent = (job.logs || []).join("\n");
+          if (job.status === "done") {
+            clearInterval(timer);
+            const name = (job.outPath || "").split("/").pop();
+            $("result").innerHTML =
+              `Concluído. Linhas: <b>${job.rows ?? ""}</b>. ` +
+              (name ? `Arquivo: <a href="/api/outputs/${encodeURIComponent(name)}" target="_blank">${name}</a>` : "");
+          }
+          if (job.status === "error") {
+            clearInterval(timer);
+            $("scrapeError").textContent = job.error || "Falha no job";
+          }
+        }, 1000);
+      }
+
+      $("run").addEventListener("click", async () => {
+        try { await startJob(); } catch (e) { $("scrapeError").textContent = String(e); }
+      });
+
+      async function loadOutputs() {
+        const res = await fetch("/api/outputs");
+        const data = await res.json();
+        const files = data.files || [];
+        $("outputsList").innerHTML =
+          files.length === 0
+            ? "<div class='hint'>Nenhum CSV em output/ ainda.</div>"
+            : files
+                .map(
+                  (f) =>
+                    `<div style="margin:6px 0">
+                      <button class="btn secondary" data-file="${f.name}">${f.name}</button>
+                      <span class="hint">(${Math.round(f.size/1024)} KB)</span>
+                    </div>`
+                )
+                .join("");
+
+        $("outputsList").querySelectorAll("button[data-file]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const name = btn.dataset.file;
+            await showCsv(name);
+          });
+        });
+      }
+
+      async function showCsv(name) {
+        $("tableWrap").innerHTML = "<div class='hint'>Carregando...</div>";
+        const res = await fetch(`/api/outputs/${encodeURIComponent(name)}/json?limit=200`);
+        const data = await res.json();
+        const rows = data.rows || [];
+        if (!rows.length) {
+          $("tableWrap").innerHTML = "<div class='hint'>Sem linhas (ou falha ao parsear).</div>";
+          return;
+        }
+        const cols = Object.keys(rows[0]);
+        const head = cols.map((c) => `<th>${c}</th>`).join("");
+        const body = rows
+          .map((r) => {
+            const tds = cols
+              .map((c) => `<td class="truncate" title="${String(r[c] ?? "")}">${String(r[c] ?? "")}</td>`)
+              .join("");
+            return `<tr>${tds}</tr>`;
+          })
+          .join("");
+        $("tableWrap").innerHTML =
+          `<div class="hint">Visualizando <b>${name}</b> (até ${data.limit} linhas).</div>` +
+          `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+      }
+
+      $("reloadOutputs").addEventListener("click", loadOutputs);
+
+      // init
+      loadEstadosCidades().catch((e) => {
+        $("scrapeError").textContent = String(e);
+      });
+    </script>
+  </body>
+</html>
+
+

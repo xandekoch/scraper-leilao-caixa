@@ -1,6 +1,7 @@
 import { stringify } from "csv-stringify/sync";
 import type { ImovelListItem } from "../models";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 
 const COLUMNS: ReadonlyArray<keyof ImovelListItem> = [
   "imovelId",
@@ -48,6 +49,7 @@ export async function writeImoveisCsv(outPath: string, items: ImovelListItem[]):
     columns: COLUMNS as string[],
     quoted_match: /\n|,|"/
   });
+  await mkdir(path.dirname(outPath), { recursive: true });
   await writeFile(outPath, csv, "utf-8");
 }
 
